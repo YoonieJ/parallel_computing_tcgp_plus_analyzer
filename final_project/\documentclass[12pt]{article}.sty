@@ -1,0 +1,220 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{TCG-P+: Parallel Simulation of Pokémon TCG Strategies}
+\author{Your Name \\ EID: yourEID \\ TACC Username: yoonjang0219 \\ \texttt{yoonie0219@utexas.edu}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The Pokémon Trading Card Game Pocket (TCG-P) is a fast-paced adaptation of the classic Pokémon TCG. Novice players often face steep learning curves and time pressure due to the game's strict 90-second turn timer and complex decision trees. TCG-P+ is a parallel computing–powered probability analyzer designed to simulate and evaluate move outcomes in real time. By leveraging recursive decision trees and Monte Carlo simulations, parallelized with OpenMP, TCG-P+ provides actionable insights to support optimal gameplay decisions. This report details the implementation, parallelization strategies, and performance evaluation of TCG-P+ on the Stampede3 supercomputer.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+The Pokémon Trading Card Game Pocket (TCG-P) is a turn-based strategy game where players manage decks of cards representing Pokémon, energies, and trainers. Players must make rapid decisions involving deck randomness, card draws, and opponent moves. The complexity of decision trees and the time constraints make it challenging for novice players to perform optimally.
+
+To address this, TCG-P+ leverages parallel computing to simulate and evaluate potential game outcomes in real time. By combining recursive decision trees and Monte Carlo simulations, parallelized with OpenMP, TCG-P+ accelerates the evaluation process, enabling players to make informed decisions within the game's time limits.
+
+\section{Problem Description}
+A game state in TCG-P includes:
+\begin{itemize}
+  \item Active Pokémon and benched Pokémon.
+  \item Energy attachments on each Pokémon.
+  \item History of actions taken.
+  \item Opponent's visible board state.
+\end{itemize}
+
+Simulating optimal play requires exploring numerous possible move sequences and stochastic outcomes. As the depth of exploration or number of randomized trials increases, so does the runtime, making parallelization essential.
+
+\section{Computational Approach}
+
+\subsection{Game Simulation}
+\begin{enumerate}
+  \item \textbf{Game State Representation:} Encoded as a struct containing the current board configuration and history.
+  \item \textbf{Monte Carlo Simulations:} For each possible move, randomly simulate the rest of the game to estimate win probability.
+  \item \textbf{Decision Trees:} Recursively generate and evaluate all legal next states up to a fixed depth.
+\end{enumerate}
+
+\subsection{Parallelization with OpenMP}
+OpenMP is used to parallelize the computationally intensive components of TCG-P+:
+\begin{itemize}
+  \item \textbf{Recursive Decision Tree Evaluation:} Each node represents a game state branching into possible moves. OpenMP assigns threads to explore independent branches concurrently.
+  \item \textbf{Monte Carlo Simulations:} Thousands of independent game simulations are distributed across threads, increasing speed and statistical reliability.
+  \item \textbf{Data Management and Caching:} Thread-safe hash maps are used for memoization of game states, eliminating redundant calculations.
+\end{itemize}
+
+\paragraph{Monte Carlo Simulation:}
+The total number of simulations is divided across threads using an OpenMP \texttt{parallel for} with a reduction on the accumulated outcome:
+\begin{lstlisting}[language=C++,caption={Parallel Monte Carlo Simulation},basicstyle=\ttfamily\small]
+double monteCarloSimulation(const GameState &state, int numSimulations) {
+    double totalOutcome = 0.0;
+    #pragma omp parallel for reduction(+:totalOutcome)
+    for (int i = 0; i < numSimulations; ++i) {
+        totalOutcome += evaluateGameState(state);
+    }
+    return totalOutcome / numSimulations;
+}
+\end{lstlisting}
+
+\paragraph{Decision Tree:}  
+Top‐level branches of the decision tree are evaluated in parallel:
+\begin{lstlisting}[language=C++,caption={Parallel Decision‐Tree Evaluation},basicstyle=\ttfamily\small]
+double simulateDecisionTree(const GameState &state, int depth) {
+    if (depth == 0) return evaluateGameState(state);
+
+    auto nextStates = generateNextStates(state);
+    double totalOutcome = 0.0;
+
+    #pragma omp parallel for reduction(+:totalOutcome)
+    for (size_t i = 0; i < nextStates.size(); ++i) {
+        totalOutcome += simulateDecisionTreeSequential(nextStates[i], depth - 1);
+    }
+    return totalOutcome / nextStates.size();
+}
+\end{lstlisting}
+
+\section{Results}
+
+\subsection{Performance Evaluation}
+The simulation was run on the Stampede3 supercomputer using an 8-core Intel Xeon processor (2.4\,GHz) for various problem sizes and thread counts:
+\begin{itemize}
+  \item \textbf{Speedup:} Up to 4× speedup observed on 8 threads for large Monte Carlo workloads.
+  \item \textbf{Strong Scaling:} Efficiency above 70\% up to 8 threads; declines thereafter due to synchronization.
+  \item \textbf{Weak Scaling:} Runtime remained roughly constant when increasing problem size proportionally to threads.
+\end{itemize}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.7\textwidth]{speedup_graph.png}
+  \caption{Speedup vs.\ number of threads.}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.7\textwidth]{runtime_graph.png}
+  \caption{Runtime vs.\ problem size for varying thread counts.}
+\end{figure}
+
+\subsection{Observations}
+\begin{itemize}
+  \item \emph{Diminishing Returns:} Beyond 8 threads, overhead from locking and task setup reduces marginal gains.
+  \item \emph{Load Balance:} Monte Carlo tasks evenly distribute work, while decision‐tree branches may vary in computational weight.
+  \item \emph{Amdahl’s Law:} Non‐parallelizable portions (e.g., state setup) limit maximal speedup.
+\end{itemize}
+
+\section{How to Run the Code}
+
+\subsection{Prerequisites}
+\begin{itemize}
+  \item A C++ compiler supporting C++20.
+  \item CMake (minimum version 3.20).
+  \item OpenMP support in your compiler.
+  \item Access to the Stampede3 supercomputer.
+\end{itemize}
+
+\subsection{Steps to Build and Run}
+\begin{enumerate}
+  \item Log in to Stampede3 and navigate to your project directory:
+  \begin{lstlisting}[language=bash]
+  ssh <your_username>@stampede3.tacc.utexas.edu
+  cd ~/COE379L/final_project
+  \end{lstlisting}
+
+  \item Create a build directory and configure the build:
+  \begin{lstlisting}[language=bash]
+  mkdir build
+  cd build
+  cmake -DCMAKE_BUILD_TYPE=Release ..
+  \end{lstlisting}
+
+  \item Compile the code using multiple threads:
+  \begin{lstlisting}[language=bash]
+  make -j
+  \end{lstlisting}
+
+  \item Set the number of OpenMP threads and run the program:
+  \begin{lstlisting}[language=bash]
+  export OMP_NUM_THREADS=8
+  ./final_project 3 10000
+  \end{lstlisting}
+  Here, `3` is the decision tree depth, and `10000` is the number of Monte Carlo simulations.
+
+\subsection{Input Files}
+\begin{itemize}
+  \item \texttt{Cards.txt}: Contains the Pokémon card database.
+  \item \texttt{deck.txt}: Specifies the player's 20-card deck.
+  \item \texttt{metaDecks.txt}: Contains predefined meta-decks for opponent estimation.
+\end{itemize}
+
+\subsection{Gameplay Instructions}
+\begin{enumerate}
+  \item Prepare your deck in \texttt{deck.txt} and ensure all cards are defined in \texttt{Cards.txt}.
+  \item Run the program and follow the prompts to:
+  \begin{itemize}
+    \item Load your deck.
+    \item View your starting hand.
+    \item Set up the initial board state.
+  \end{itemize}
+  \item Input game state updates after each round to receive probabilistic insights and recommendations.
+\end{enumerate}
+
+\section{Conclusion}
+Parallelizing Pokémon TCG simulations with OpenMP delivers substantial performance improvements, enabling deeper strategic evaluations in practical time. Running the program on Stampede3 demonstrates the scalability of the approach, with significant speedups observed for Monte Carlo simulations and decision tree evaluations. Future work could integrate MPI for multi‐node scaling, implement dynamic load balancing for tree exploration, and optimize memory locality to further reduce overhead.
+
+\begin{thebibliography}{9}
+\bibitem{OpenMP}
+OpenMP Architecture Review Board, \emph{OpenMP Application Programming Interface}, 2024. \\
+\url{https://www.openmp.org}
+
+\bibitem{GoogleDevGuide}
+Google Developer Documentation Style Guide, 2024. \\
+\url{https://developers.google.com/style}
+
+\bibitem{TauAnalysis}
+Tutorials Book, Section 18: TAU Performance Analysis.
+\end{thebibliography}
+
+\appendix
+\section{Code Snippets}
+\subsection{Parallel Monte Carlo}
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small]
+double monteCarloSimulation(const GameState &state, int numSimulations) {
+    double totalOutcome = 0.0;
+    #pragma omp parallel for reduction(+:totalOutcome)
+    for (int i = 0; i < numSimulations; ++i) {
+        totalOutcome += evaluateGameState(state);
+    }
+    return totalOutcome / numSimulations;
+}
+\end{lstlisting}
+
+\subsection{Parallel Decision Tree}
+\begin{lstlisting}[language=C++,basicstyle=\ttfamily\small]
+double simulateDecisionTree(const GameState &state, int depth) {
+    if (depth == 0) return evaluateGameState(state);
+
+    auto nextStates = generateNextStates(state);
+    double totalOutcome = 0.0;
+
+    #pragma omp parallel for reduction(+:totalOutcome)
+    for (size_t i = 0; i < nextStates.size(); ++i) {
+        totalOutcome += simulateDecisionTreeSequential(nextStates[i], depth - 1);
+    }
+    return totalOutcome / nextStates.size();
+}
+\end{lstlisting}
+
+\end{document}
