@@ -1,6 +1,6 @@
 # TCG-P+: Pokemon TCG Pocket Probability Analyzer
 
-TCG-P+ is a C++ project that tracks a Pokemon TCG Pocket game state, estimates likely outcomes, and surfaces move recommendations during play. It combines structured card data, deck input, visible opponent information, recursive lookahead, and OpenMP-parallel evaluation to help a player reason about a position.
+TCG-P+ is a C++ project that tracks a Pokemon TCG Pocket game state, estimates likely outcomes, and surfaces move recommendations during play. It combines structured card data, deck input, visible opponent information, recursive lookahead, and parallel evaluation to help a player reason about a position.
 
 ## Overview
 
@@ -10,7 +10,7 @@ The project focuses on three core tasks:
 2. Let the user enter the current board state as a game progresses.
 3. Score possible follow-up actions and estimate outcome quality with recursive simulation.
 
-The current implementation uses a heuristic evaluator plus recursive decision-tree search. It also includes a Monte Carlo helper and OpenMP-based parallel regions for top-level simulation work and meta-deck filtering.
+The current implementation uses a heuristic evaluator plus recursive decision-tree search. It also includes a Monte Carlo helper and portable parallel regions for top-level simulation work and meta-deck filtering.
 
 ## Current Features
 
@@ -19,9 +19,10 @@ The current implementation uses a heuristic evaluator plus recursive decision-tr
 - Evolution-link setup from `PrevEvo` and `NextEvo` card data.
 - Interactive game-state updates for hand, active Pokemon, bench, attacks, and energy attachments.
 - Opponent meta-deck filtering from visible Pokemon on board.
-- Recursive move evaluation over attacks and bench switches.
+- Recursive move evaluation over attacks, retreats, benching, evolutions, and common trainer-card plays.
 - Move-by-move probability output for attacks, switches, and trainer-card usage.
-- OpenMP parallelization for top-level decision-tree expansion, Monte Carlo sampling, and meta-deck filtering.
+- Portable parallel execution for top-level decision-tree expansion, Monte Carlo sampling, and meta-deck filtering, using OpenMP when available and a `std::thread` fallback otherwise.
+- More complete board-state tracking for attached energy, evolution carry-over, KO promotion, and turn ownership.
 
 ## Project Layout
 
@@ -47,16 +48,18 @@ cmake --build build
 ### With g++
 
 ```bash
-g++ -std=c++17 -fopenmp main.cpp FileParser.cpp GameSimulation.cpp -o TCGPPlus
+g++ -std=c++17 main.cpp FileParser.cpp GameSimulation.cpp -o TCGPPlus
 ```
+
+If you have OpenMP installed and want that backend specifically, add your local OpenMP compile and link flags.
 
 ### OpenMP Note
 
-The project requires an OpenMP-capable compiler. On some macOS setups, the default Apple `clang++` does not support `-fopenmp` without an additional OpenMP toolchain.
+The project runs fastest with an OpenMP-capable compiler. If OpenMP is unavailable, the code now falls back to a portable `std::thread` backend so the analyzer can still build and benchmark on default macOS toolchains.
 
 ## Benchmarking Parallelism
 
-The project includes a built-in benchmark mode that compares serial and OpenMP-parallel execution on the same representative game state.
+The project includes a built-in benchmark mode that compares serial and parallel execution on the same representative game state.
 
 After building with CMake, run:
 
@@ -79,7 +82,7 @@ OMP_NUM_THREADS=8 ./TCGPPlus --benchmark
 The benchmark prints two tables:
 
 - `Decision Tree Benchmark`: compares `simulateDecisionTreeSequential(...)` against the parallel top-level decision-tree evaluation.
-- `Monte Carlo Benchmark`: compares `monteCarloSimulationSequential(...)` against the OpenMP Monte Carlo loop.
+- `Monte Carlo Benchmark`: compares `monteCarloSimulationSequential(...)` against the parallel Monte Carlo loop.
 
 For each thread count, the program reports:
 
@@ -121,16 +124,16 @@ Professor's Research, 2
 The recommendation engine currently evaluates future states using:
 
 - a heuristic board scorer based on HP, attached energy, available attacks, hand size, deck size, and status conditions,
-- recursive branching over attacks and bench switches,
+- recursive branching over attacks, retreats, setup plays, and common trainer effects,
 - optional Monte Carlo sampling for lightweight randomized draw exploration,
-- OpenMP parallelization at the top level of the recursive tree.
+- parallel execution at the top level of the recursive tree with a portable backend.
 
 This is best understood as an analysis assistant rather than a perfect game solver. The evaluator is intentionally lightweight so it can be called often during interactive play.
 
 ## Limitations
 
 - The search space is still simplified compared with the full Pokemon TCG Pocket ruleset.
-- The recursive tree currently expands attack and switch branches, not every possible legal action.
+- The recursive tree covers a broader but still simplified subset of legal actions, centered on attacks, retreating, benching, evolution, and common trainer cards.
 - The heuristic evaluator estimates position strength; it is not backed by a full rules engine.
 - Opponent modeling is based on visible board information and candidate meta-decks, not hidden-card inference.
 

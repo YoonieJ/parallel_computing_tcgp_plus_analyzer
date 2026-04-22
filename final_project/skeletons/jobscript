@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -J vectorsum
+#SBATCH -o vectorsum.o%j
+#SBATCH -e vectorsum.e%j
+#SBATCH -p skx
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -t 00:05:00
+#SBATCH -A ASC25001
+
+# Load Intel compiler
+module load intel/24.0
+
+# Run program with different thread counts
+for t in 1 2 4 8 12 16; do
+    export OMP_NUM_THREADS=$t
+    echo "Running with $t threads:"
+    ./vectorsum 1000000 $t
+    echo ""
+done

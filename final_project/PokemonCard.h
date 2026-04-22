@@ -149,6 +149,7 @@ struct Pokemon {
     bool canEvolve;
     int cardType;
     int hp;
+    int maxHp;
     int stage;
     std::string prevEvo;
     std::string nextEvo;
@@ -175,6 +176,7 @@ struct Pokemon {
       , canEvolve(evolve)
       , cardType(cType)
       , hp(health)
+      , maxHp(health)
       , stage(stg)
       , prevEvo("")
       , nextEvo("")
@@ -218,8 +220,18 @@ struct GameState {
     std::vector<EnergyAttachment> yourAttachments;
     std::vector<EnergyAttachment> oppAttachments;
     std::vector<std::string> oppMetaDeckGuesses;
+    bool playerTurn;
+    bool supporterUsedThisTurn;
+    bool playerWon;
+    bool opponentWon;
 
-    GameState() : turn(0), firstTurn(true) {}
+    GameState()
+        : turn(0)
+        , firstTurn(true)
+        , playerTurn(true)
+        , supporterUsedThisTurn(false)
+        , playerWon(false)
+        , opponentWon(false) {}
 };
 
 #endif

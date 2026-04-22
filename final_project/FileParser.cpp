@@ -4,7 +4,6 @@
 #include <iostream>
 #include <cctype>
 #include <string>
-#include <omp.h>
 
 namespace {
 
@@ -48,42 +47,50 @@ int parseIntOrZero(const std::string &raw) {
         return 0;
     }
 }
-void applySkillEffectToken(const std::string &token, SpecialSkill &effect) {
-    if (token == "None") return;
-    if (token == "CoinFlip:ParalyzeOpp") {
+void applySkillEffectToken(const std::string &token, Skill &skill) {
+    SpecialSkill &effect = skill.specialEffect;
+    const std::string normalizedToken = toLower(trim(token));
+
+    if (normalizedToken == "none") return;
+    if (normalizedToken == "coinflip:paralyzeopp") {
         effect.doCoinFlips = true;
         effect.numFlips = 1;
         effect.paralyzeOpp = true;
-    } else if (token.rfind("Heal:", 0) == 0) {
+    } else if (normalizedToken.rfind("heal:", 0) == 0) {
         effect.heal = parseIntOrZero(token.substr(5));
-    } else if (token.rfind("CoinFlip:", 0) == 0) {
+    } else if (normalizedToken.rfind("coinflip:", 0) == 0) {
         effect.doCoinFlips = true;
         effect.damagePerFlip = parseIntOrZero(token.substr(9));
-    } else if (token == "ShuffleBackIfHeads") {
+    } else if (normalizedToken == "shufflebackifheads") {
         effect.doCoinFlips = true;
         effect.numFlips = 1;
         effect.shuffleOpponentBackIfHeads = true;
-    } else if (token.rfind("DamagePerEnergy:", 0) == 0 || token.rfind("energyAttached:", 0) == 0) {
+    } else if (normalizedToken == "shuffleback") {
+        effect.shuffleOpponentBackIfHeads = true;
+    } else if (normalizedToken.rfind("damageperenergy:", 0) == 0 ||
+               normalizedToken.rfind("energyattached:", 0) == 0) {
         auto sep = token.find(':');
         effect.damagePerEnergyAttached = parseIntOrZero(token.substr(sep + 1));
-    } else if (token.rfind("randomDmg:", 0) == 0) {
+    } else if (normalizedToken.rfind("randomdmg:", 0) == 0) {
         auto parts = splitAndTrim(token.substr(10), ',');
         if (parts.size() == 2) {
             effect.randomHitDamage = parseIntOrZero(parts[0]);
             effect.randomHitCount = parseIntOrZero(parts[1]);
         }
-    } else if (token == "PoisonOpp") {
+    } else if (normalizedToken == "poisonopp") {
         effect.poisonOpp = true;
-    } else if (token == "switchOut") {
+    } else if (normalizedToken == "switchout") {
         effect.switchOutOpp = true;
-    } else if (token == "banSupporter" || token == "BanSupporter:nextTurn") {
+    } else if (normalizedToken == "bansupporter" || normalizedToken == "bansupporter:nextturn") {
         effect.banSupporter = true;
-    } else if (token.rfind("dmgIfPoisoned:", 0) == 0) {
+    } else if (normalizedToken.rfind("dmgifpoisoned:", 0) == 0) {
         effect.extraDmgIfPoisoned = parseIntOrZero(token.substr(14));
-    } else if (token.rfind("reduceDmg:", 0) == 0) {
+    } else if (normalizedToken.rfind("reducedmg:", 0) == 0) {
         effect.damageReduction = parseIntOrZero(token.substr(10));
-    } else if (token.rfind("benchedDmg:", 0) == 0) {
+    } else if (normalizedToken.rfind("bencheddmg:", 0) == 0) {
         effect.benchedDamage = parseIntOrZero(token.substr(11));
+    } else if (normalizedToken.rfind("dropenergy:", 0) == 0) {
+        skill.energyDrop = parseIntOrZero(token.substr(11));
     } else {
         std::cerr << "Warning: Unrecognized SkillEffect token: " << token << std::endl;
     }
@@ -118,6 +125,7 @@ bool parsePokemonBlock(std::istream &in, Pokemon &p) {
             p.cardType = parseIntOrZero(value);
         } else if (key == "HP") {
             p.hp = parseIntOrZero(value);
+            p.maxHp = p.hp;
         } else if (key == "Stage") {
             p.stage = parseIntOrZero(value);
             if (p.stage != 0) p.canEvolve = false;
@@ -154,9 +162,8 @@ bool parsePokemonBlock(std::istream &in, Pokemon &p) {
             }
         } else if (key == "SkillEffect") {
             if (p.skills.empty()) continue;
-            auto &effect = p.skills.back().specialEffect;
             for (auto &tok : splitAndTrim(value, ';')) {
-                applySkillEffectToken(trim(tok), effect);
+                applySkillEffectToken(trim(tok), p.skills.back());
             }
         } else if (key == "Abilities") {
             for (auto &tok : splitAndTrim(value, ';')) {
@@ -173,7 +180,6 @@ bool parsePokemonBlock(std::istream &in, Pokemon &p) {
 }
 
 void processEnergyRequirements(std::vector<Skill> &skills) {
-    #pragma omp parallel for
     for (size_t i = 0; i < skills.size(); ++i) {
         Skill &skill = skills[i];
         for (auto &req : skill.energyRequirements) {

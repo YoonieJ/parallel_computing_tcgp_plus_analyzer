@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
 
     preStartConfiguration(state);
 
-    preFirstRoundConfiguration(state);
     drawInitialHand(state);
+    preFirstRoundConfiguration(state);
 
     postFirstRoundUpdate(state, cardMap);
     updateMetaDeckGuesses(state);
@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
         preEveryRoundConfiguration(state);
         processRoundInput(state);
         postEveryRoundUpdate(state);
+        state.playerTurn = true;
         updateMetaDeckGuesses(state);
         printActionProbabilities(state, simulationDepth);
         double winProbability = simulateDecisionTree(state, simulationDepth) * 100;
