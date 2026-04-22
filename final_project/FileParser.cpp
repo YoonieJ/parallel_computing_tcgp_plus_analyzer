@@ -115,7 +115,7 @@ bool parsePokemonBlock(std::istream &in, Pokemon &p) {
         } else if (key == "Type") {
             p.type = value;
             if (value == "Supporter")        p.cardType = 1;
-            else if (value == "Item")        p.cardType = 2;
+            else if (value == "Item" || value == "Tool") p.cardType = 2;
             else                             p.cardType = 0;
         } else if (key == "Package") {
             p.package = value;
